@@ -13,13 +13,22 @@ int x_best = 90;
 int best_intensity = 0;
 
 double t = 0.0; // to control sin functions
-double dt = 0.02; // t increments
+double dt = 0.002; // t increments
 
-bool paused = false; // pause the automatic movement
 bool scan = false; // scanning for light source
 
 enum MODE {manual, automatic};
 MODE mode = manual;
+
+// Communication
+const byte numChars = 32;
+char receivedChars[numChars];
+char tempChars[numChars]; // temporary array for use when parsing
+// variables to hold the parsed data
+char messagePC[numChars] = {0};
+int val1PC = 0;
+int val2PC = 0;
+boolean newData = false;
 
 void setup() {
   servo_z.attach(9, 400, 2250); // servos are not standard so put min and max pulse width
@@ -31,41 +40,29 @@ void setup() {
   pinMode(pResistor, INPUT);
 
   Serial.begin(9600);
-  Serial.println("Arduino is ready");
+  Serial.println("Arduino ready");
+  Serial.println("Enter data in this style <HelloWorld, 12, 24.7>  ");
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  if (Serial.available()) {
-    if (mode == manual) {
-      z_angle = Serial.parseInt();
-      if (z_angle == -1) {
-        // special code to return to automatic
-        mode = automatic;
-        scan = true;
-        t = 0.0;
-        return;
-      }
-      x_angle = Serial.parseInt();
-      servo_z.write(z_angle);
-      servo_x.write(x_angle);
-    }
-    else if (mode == automatic) {
-      char input = Serial.read();
-      if (input == 'p') {
-        paused = !paused;
-      }
-      if (input == 'm') {
-        mode = manual;
-      }
-    }
+  recvWithStartEndMarkers();
+  if (newData == true) {
+    strcpy(tempChars, receivedChars);
+      // this temporary copy is necessary to protect the original data
+      // because strtok() used in parseData() replaces the commas with \0
+    parseData();
+    //showParsedData();
+    applyData();
+    newData = false;
   }
 
-  // plotting values
   int lightI = analogRead(pResistor); // light intensity
+  // plotting values
+  /*
   Serial.print(lightI);
   Serial.print(",");
   Serial.println(best_intensity);
+  */
 
   if (mode == automatic && scan) {
     fetch_best_intensity(lightI);
@@ -82,7 +79,6 @@ void loop() {
     }
   }
   
-  if (!paused) t += dt;
   if (t >= 32 * TWO_PI) t = 0.0;
 }
 
@@ -110,4 +106,82 @@ void on_scan_finished() {
   z_best = 0;
   x_best = 0;
   best_intensity = 0;
+}
+
+
+void recvWithStartEndMarkers() {
+    static boolean recvInProgress = false;
+    static byte ndx = 0;
+    char startMarker = '<';
+    char endMarker = '>';
+    char rc;
+
+    while (Serial.available() > 0 && newData == false) {
+        rc = Serial.read();
+
+        if (recvInProgress == true) {
+            if (rc != endMarker) {
+                receivedChars[ndx] = rc;
+                ndx++;
+                if (ndx >= numChars) {
+                    ndx = numChars - 1;
+                }
+            }
+            else {
+                receivedChars[ndx] = '\0'; // terminate the string
+                recvInProgress = false;
+                ndx = 0;
+                newData = true;
+            }
+        }
+
+        else if (rc == startMarker) {
+            recvInProgress = true;
+        }
+    }
+}
+
+void parseData() {      // split the data into its parts
+    char* strtokIndx; // this is used by strtok() as an index
+
+    strtokIndx = strtok(tempChars,",");      // get the first part - the string
+    strcpy(messagePC, strtokIndx); // copy it to messageFromPC
+ 
+    strtokIndx = strtok(NULL, ","); // this continues where the previous call left off
+    val1PC = atoi(strtokIndx);     // convert this part to an integer
+
+    strtokIndx = strtok(NULL, ",");
+    val2PC = atoi(strtokIndx);     // convert this part to a float
+}
+
+void applyData() {
+  if (compareMsg(messagePC, "man")) {
+    mode = manual;
+    z_angle = val1PC;
+    x_angle = val2PC;
+    servo_z.write(z_angle);
+    servo_x.write(x_angle);
+  }
+  else if(compareMsg(messagePC, "auto")) {
+    t = 0;
+    mode = automatic;
+    scan = true;
+  }
+}
+
+bool compareMsg(const char* input, const char* test) {
+  if (strlen(input) != strlen(test)) return false;
+  for (int i = 0; i < strlen(input); i++) {
+    if (input[i] != test[i]) return false;
+  }
+  return true;
+}
+
+void showParsedData() {
+    Serial.print("Message ");
+    Serial.println(messagePC);
+    Serial.print("Val1 ");
+    Serial.println(val1PC);
+    Serial.print("Val2 ");
+    Serial.println(val2PC);
 }

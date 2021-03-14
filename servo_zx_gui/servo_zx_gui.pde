@@ -9,7 +9,7 @@ void setup() {
   
   printArray(Serial.list()); // prints all available serial ports
   
-  port = new Serial(this, "/dev/ttyUSB1", 9600); // put used arduino port here
+  port = new Serial(this, "/dev/ttyUSB0", 9600); // put used arduino port here
   
   cp5 = new ControlP5(this); 
   
@@ -23,7 +23,7 @@ void setup() {
     .setSize(200, 20)
     .setRange(0, 180)
     .setValue(90.0)
-    .setTriggerEvent(Slider.RELEASE)
+    //.setTriggerEvent(Slider.RELEASE)
     ;
   
   cp5.addSlider("slider_x")
@@ -31,7 +31,7 @@ void setup() {
     .setSize(20, 200)
     .setRange(0, 180)
     .setValue(90.0)
-    .setTriggerEvent(Slider.RELEASE)
+    //.setTriggerEvent(Slider.RELEASE)
     ;
   
   cp5.addButton("manual")
@@ -64,16 +64,37 @@ void slider_x() {
 }
 
 void scan() {
-  port.write("-1");
+  port.write("<auto>");
 }
 
 void manual() {
-  port.write("m");
+  port.write("<man, 90, 90>");
+}
+
+void keyPressed() {
+  if (key == CODED) {
+    if (keyCode == UP) {
+      float curr = cp5.getController("slider_x").getValue();
+      cp5.getController("slider_x").setValue(curr - 5);
+    } else if (keyCode == DOWN) {
+      float curr = cp5.getController("slider_x").getValue();
+      cp5.getController("slider_x").setValue(curr + 5);
+    }
+    
+    if (keyCode == RIGHT) {
+      float curr = cp5.getController("slider_z").getValue();
+      cp5.getController("slider_z").setValue(curr - 5);
+    } else if (keyCode == LEFT) {
+      float curr = cp5.getController("slider_z").getValue();
+      cp5.getController("slider_z").setValue(curr + 5);
+    }
+    send_pos();
+  }
 }
 
 void send_pos() {
   int z = (int) cp5.getController("slider_z").getValue();
   int x = (int) cp5.getController("slider_x").getValue();
 
-  port.write(str(z) + "," + str(x));
+  port.write("<man, " + str(z) + ", " + str(x) + ">");
 }
